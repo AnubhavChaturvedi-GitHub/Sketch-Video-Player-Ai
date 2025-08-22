@@ -216,54 +216,188 @@ const AdvancedVideoPlayer = ({ sketches, narrationText, backgroundMusic }) => {
     }
   }, [currentImageIndex, sketches, settings.threshold, processEdgeDetection, setupCanvas]);
 
-  // Start video recording with audio
-  const startRecording = useCallback(() => {
+  // Audio context management
+  const audioContextRef = useRef(null);
+  const ttsSourceRef = useRef(null);
+  const musicSourceRef = useRef(null);
+  const recordedChunks = useRef([]);
+
+  // Initialize audio context safely
+  const initializeAudioContext = useCallback(() => {
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+    }
+    
+    audioContextRef.current = new AudioContext();
+    return audioContextRef.current;
+  }, []);
+
+  // Start video recording with properly managed audio
+  const startRecording = useCallback(async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
-    const stream = canvas.captureStream(30);
-    
-    // Add audio tracks
-    if (audioRef.current && backgroundMusicRef.current) {
-      const audioContext = new AudioContext();
-      const destination = audioContext.createMediaStreamDestination();
+    try {
+      // Clear any existing chunks
+      recordedChunks.current = [];
       
-      // TTS audio
-      const ttsSource = audioContext.createMediaElementSource(audioRef.current);
-      const ttsGain = audioContext.createGain();
-      ttsGain.gain.value = settings.narrationVolume;
+      // Create canvas stream
+      const canvasStream = canvas.captureStream(30);
+      let finalStream = canvasStream;
       
-      // Background music
-      const musicSource = audioContext.createMediaElementSource(backgroundMusicRef.current);
-      const musicGain = audioContext.createGain();
-      musicGain.gain.value = settings.backgroundVolume;
+      // Handle audio if available
+      if (narrationText || backgroundMusic) {
+        const audioContext = initializeAudioContext();
+        await audioContext.resume();
+        
+        const destination = audioContext.createMediaStreamDestination();
+        let hasAudioSources = false;
+        
+        // Add TTS audio if available
+        if (audioRef.current && narrationText) {
+          try {
+            // Ensure audio element is not already connected
+            if (ttsSourceRef.current) {
+              ttsSourceRef.current.disconnect();
+            }
+            
+            ttsSourceRef.current = audioContext.createMediaElementSource(audioRef.current);
+            const ttsGain = audioContext.createGain();
+            ttsGain.gain.value = settings.narrationVolume;
+            
+            ttsSourceRef.current.connect(ttsGain).connect(destination);
+            hasAudioSources = true;
+          } catch (error) {
+            console.warn('TTS audio source creation failed:', error);
+          }
+        }
+        
+        // Add background music if available
+        if (backgroundMusicRef.current && backgroundMusic) {
+          try {
+            // Ensure music element is not already connected
+            if (musicSourceRef.current) {
+              musicSourceRef.current.disconnect();
+            }
+            
+            musicSourceRef.current = audioContext.createMediaElementSource(backgroundMusicRef.current);
+            const musicGain = audioContext.createGain();
+            musicGain.gain.value = settings.backgroundVolume;
+            
+            musicSourceRef.current.connect(musicGain).connect(destination);
+            hasAudioSources = true;
+          } catch (error) {
+            console.warn('Background music source creation failed:', error);
+          }
+        }
+        
+        // Combine video and audio streams if we have audio
+        if (hasAudioSources) {
+          const audioTrack = destination.stream.getAudioTracks()[0];
+          if (audioTrack) {
+            finalStream = new MediaStream([
+              ...canvasStream.getVideoTracks(),
+              audioTrack
+            ]);
+          }
+        }
+      }
       
-      // Connect audio graph
-      ttsSource.connect(ttsGain).connect(destination);
-      musicSource.connect(musicGain).connect(destination);
+      // Setup recorder
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') 
+        ? 'video/webm;codecs=vp9'
+        : 'video/webm';
       
-      // Add audio track to video stream
-      destination.stream.getAudioTracks().forEach(track => {
-        stream.addTrack(track);
+      const recorder = new MediaRecorder(finalStream, {
+        mimeType: mimeType,
+        videoBitsPerSecond: 2500000 // 2.5 Mbps for good quality
+      });
+      
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunks.current.push(event.data);
+        }
+      };
+      
+      recorder.onstop = () => {
+        handleRecordingComplete();
+      };
+      
+      recorder.onerror = (event) => {
+        console.error('Recording error:', event);
+        setIsRecording(false);
+        toast({
+          title: "Recording Error",
+          description: "Failed to record video. Please try again.",
+          variant: "destructive"
+        });
+      };
+      
+      videoRecorderRef.current = recorder;
+      recorder.start(100); // Collect data every 100ms
+      setIsRecording(true);
+      
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      setIsRecording(false);
+      toast({
+        title: "Recording Failed", 
+        description: "Could not initialize video recording.",
+        variant: "destructive"
       });
     }
+  }, [settings, narrationText, backgroundMusic, initializeAudioContext, toast]);
+
+  // Handle recording completion and download
+  const handleRecordingComplete = useCallback(() => {
+    if (recordedChunks.current.length === 0) {
+      toast({
+        title: "Recording Error",
+        description: "No video data was recorded.",
+        variant: "destructive"
+      });
+      return;
+    }
     
-    const recorder = new MediaRecorder(stream, {
-      mimeType: 'video/webm;codecs=vp9'
-    });
-    
-    const chunks = [];
-    recorder.ondataavailable = (e) => chunks.push(e.data);
-    recorder.onstop = () => {
-      const blob = new Blob(chunks, { type: 'video/webm' });
+    try {
+      const blob = new Blob(recordedChunks.current, { 
+        type: 'video/webm' 
+      });
+      
+      // Create download URL
       const url = URL.createObjectURL(blob);
-      downloadVideo(url);
-    };
-    
-    videoRecorderRef.current = recorder;
-    recorder.start();
-    setIsRecording(true);
-  }, [settings]);
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      const filename = `sketch-video-${timestamp}.webm`;
+      
+      // Trigger download
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Cleanup
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      
+      toast({
+        title: "Video Downloaded!",
+        description: `Saved as ${filename}`,
+      });
+      
+    } catch (error) {
+      console.error('Download failed:', error);
+      toast({
+        title: "Download Error",
+        description: "Failed to save video file.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsRecording(false);
+      recordedChunks.current = [];
+    }
+  }, [toast]);
 
   // Start complete animation with audio
   const startAnimation = useCallback(() => {
