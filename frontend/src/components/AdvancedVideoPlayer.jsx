@@ -142,12 +142,10 @@ const AdvancedVideoPlayer = ({ sketches, narrationText, backgroundMusic }) => {
 
   // Animate single image sketch
   const animateSketch = useCallback(() => {
-    if (!canvasRef.current || edgePoints.length === 0) return;
+    if (!canvasRef.current || edgePoints.length === 0 || !isPlaying) return;
     
     const ctx = canvasRef.current.getContext('2d');
     const pointsPerFrame = settings.speed;
-    
-    let pathDrawn = false;
     
     for (let i = 0; i < pointsPerFrame && animationIndex < edgePoints.length; i++) {
       const point = edgePoints[animationIndex];
@@ -166,7 +164,6 @@ const AdvancedVideoPlayer = ({ sketches, narrationText, backgroundMusic }) => {
         } else {
           drawPath(ctx, currentPath, settings.color, settings.thickness);
           setCurrentPath([point]);
-          pathDrawn = true;
         }
       }
       
@@ -187,20 +184,27 @@ const AdvancedVideoPlayer = ({ sketches, narrationText, backgroundMusic }) => {
     
     if (animationIndex >= edgePoints.length) {
       // Move to next image
-      setTimeout(() => {
-        if (currentImageIndex < sketches.length - 1) {
+      if (currentImageIndex < sketches.length - 1) {
+        setTimeout(() => {
           setCurrentImageIndex(prev => prev + 1);
           setAnimationIndex(0);
           setCurrentPath([]);
           setAnimationProgress(0);
-        } else {
-          completeAnimation();
-        }
-      }, 500);
+          
+          // Continue animation for next image
+          if (isPlaying) {
+            animationRef.current = requestAnimationFrame(animateSketch);
+          }
+        }, 1000); // 1 second pause between images
+      } else {
+        // All images completed
+        completeAnimation();
+      }
     } else if (isPlaying) {
+      // Continue current image animation
       animationRef.current = requestAnimationFrame(animateSketch);
     }
-  }, [edgePoints, animationIndex, currentPath, isPlaying, settings, currentImageIndex, sketches.length, drawPath]);
+  }, [edgePoints, animationIndex, currentPath, isPlaying, settings, currentImageIndex, sketches.length, drawPath, completeAnimation]);
 
   // Process current image for edge detection
   useEffect(() => {
