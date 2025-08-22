@@ -544,24 +544,44 @@ const AdvancedVideoPlayer = ({ sketches, narrationText, backgroundMusic }) => {
     setIsPlaying(false);
     setOverallProgress(100);
     
+    // Stop recording and trigger download
     if (videoRecorderRef.current && isRecording) {
-      videoRecorderRef.current.stop();
-      setIsRecording(false);
+      try {
+        videoRecorderRef.current.stop();
+        // handleRecordingComplete will be called automatically via onstop event
+      } catch (error) {
+        console.error('Error stopping recorder:', error);
+        setIsRecording(false);
+        toast({
+          title: "Recording Error",
+          description: "Failed to complete video recording.",
+          variant: "destructive"
+        });
+      }
+    } else {
+      // If not recording, show completion message
+      toast({
+        title: "Animation Complete!",
+        description: "Sketch animation finished successfully"
+      });
     }
-    
-    toast({
-      title: "Animation Complete!",
-      description: "Your sketch video with synchronized audio is ready for download"
-    });
   }, [isRecording, toast]);
 
-  const downloadVideo = (url) => {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `sketch-video-${Date.now()}.webm`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Cleanup audio context and connections
+      if (ttsSourceRef.current) {
+        try { ttsSourceRef.current.disconnect(); } catch (e) {}
+      }
+      if (musicSourceRef.current) {
+        try { musicSourceRef.current.disconnect(); } catch (e) {}
+      }
+      if (audioContextRef.current) {
+        try { audioContextRef.current.close(); } catch (e) {}
+      }
+    };
+  }, []);
 
   // Create TTS audio URL
   const ttsUrl = narrationText ? 
