@@ -592,13 +592,24 @@ const AdvancedVideoPlayer = ({ sketches, narrationText, backgroundMusic }) => {
     <div className="space-y-6">
       {/* Hidden Audio Elements */}
       {ttsUrl && (
-        <audio ref={audioRef} preload="auto" crossOrigin="anonymous">
+        <audio 
+          ref={audioRef} 
+          preload="auto" 
+          crossOrigin="anonymous"
+          onError={(e) => console.warn('TTS audio error:', e)}
+        >
           <source src={ttsUrl} type="audio/mpeg" />
         </audio>
       )}
       
       {backgroundMusic && (
-        <audio ref={backgroundMusicRef} preload="auto" loop crossOrigin="anonymous">
+        <audio 
+          ref={backgroundMusicRef} 
+          preload="auto" 
+          loop 
+          crossOrigin="anonymous"
+          onError={(e) => console.warn('Background music error:', e)}
+        >
           <source src={backgroundMusic} type="audio/mpeg" />
         </audio>
       )}
