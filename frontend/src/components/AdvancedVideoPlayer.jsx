@@ -400,32 +400,61 @@ const AdvancedVideoPlayer = ({ sketches, narrationText, backgroundMusic }) => {
   }, [toast]);
 
   // Start complete animation with audio
-  const startAnimation = useCallback(() => {
-    setIsPlaying(true);
-    setCurrentImageIndex(0);
-    setAnimationIndex(0);
-    setCurrentPath([]);
-    setAnimationProgress(0);
-    setOverallProgress(0);
-    
-    // Start background music
-    if (backgroundMusicRef.current) {
-      backgroundMusicRef.current.volume = settings.backgroundVolume;
-      backgroundMusicRef.current.play();
+  const startAnimation = useCallback(async () => {
+    try {
+      setIsPlaying(true);
+      setCurrentImageIndex(0);
+      setAnimationIndex(0);
+      setCurrentPath([]);
+      setAnimationProgress(0);
+      setOverallProgress(0);
+      
+      // Start recording first (before audio to avoid context conflicts)
+      await startRecording();
+      
+      // Small delay to ensure recording is ready
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Start background music
+      if (backgroundMusicRef.current && backgroundMusic) {
+        try {
+          backgroundMusicRef.current.volume = settings.backgroundVolume;
+          backgroundMusicRef.current.currentTime = 0;
+          await backgroundMusicRef.current.play();
+        } catch (error) {
+          console.warn('Background music play failed:', error);
+        }
+      }
+      
+      // Start narration
+      if (audioRef.current && narrationText) {
+        try {
+          audioRef.current.volume = settings.narrationVolume;
+          audioRef.current.currentTime = 0;
+          await audioRef.current.play();
+        } catch (error) {
+          console.warn('Narration play failed:', error);
+        }
+      }
+      
+      // Start sketch animation
+      animationRef.current = requestAnimationFrame(animateSketch);
+      
+      toast({
+        title: "Animation Started",
+        description: "Recording sketch video with synchronized audio..."
+      });
+      
+    } catch (error) {
+      console.error('Failed to start animation:', error);
+      setIsPlaying(false);
+      toast({
+        title: "Start Failed",
+        description: "Could not start animation. Please try again.",
+        variant: "destructive"
+      });
     }
-    
-    // Start narration
-    if (audioRef.current && narrationText) {
-      audioRef.current.volume = settings.narrationVolume;
-      audioRef.current.play();
-    }
-    
-    // Start recording
-    startRecording();
-    
-    // Start sketch animation
-    animationRef.current = requestAnimationFrame(animateSketch);
-  }, [narrationText, settings, startRecording, animateSketch]);
+  }, [narrationText, settings, startRecording, animateSketch, backgroundMusic, toast]);
 
   const pauseAnimation = useCallback(() => {
     setIsPlaying(false);
