@@ -474,24 +474,62 @@ const AdvancedVideoPlayer = ({ sketches, narrationText, backgroundMusic }) => {
     setAnimationProgress(0);
     setOverallProgress(0);
     
+    // Stop animation
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
     }
     
+    // Stop and reset audio
     if (audioRef.current) {
-      audioRef.current.currentTime = 0;
       audioRef.current.pause();
+      audioRef.current.currentTime = 0;
     }
     
     if (backgroundMusicRef.current) {
-      backgroundMusicRef.current.currentTime = 0;
       backgroundMusicRef.current.pause();
+      backgroundMusicRef.current.currentTime = 0;
     }
     
+    // Stop recording and cleanup
     if (videoRecorderRef.current && isRecording) {
-      videoRecorderRef.current.stop();
+      try {
+        videoRecorderRef.current.stop();
+      } catch (error) {
+        console.warn('Error stopping recorder:', error);
+      }
       setIsRecording(false);
     }
+    
+    // Cleanup audio context
+    if (ttsSourceRef.current) {
+      try {
+        ttsSourceRef.current.disconnect();
+      } catch (error) {
+        console.warn('Error disconnecting TTS source:', error);
+      }
+      ttsSourceRef.current = null;
+    }
+    
+    if (musicSourceRef.current) {
+      try {
+        musicSourceRef.current.disconnect();
+      } catch (error) {
+        console.warn('Error disconnecting music source:', error);
+      }
+      musicSourceRef.current = null;
+    }
+    
+    if (audioContextRef.current) {
+      try {
+        audioContextRef.current.close();
+      } catch (error) {
+        console.warn('Error closing audio context:', error);
+      }
+      audioContextRef.current = null;
+    }
+    
+    // Clear recorded chunks
+    recordedChunks.current = [];
     
     // Clear canvas
     const canvas = canvasRef.current;
