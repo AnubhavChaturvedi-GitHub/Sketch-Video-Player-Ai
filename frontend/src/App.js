@@ -2,6 +2,7 @@ import React from "react";
 import "./App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import SketchGenerator from "./components/SketchGenerator";
+import PreviewDemo from "./components/PreviewDemo";
 import { Toaster } from "./components/Toaster";
 
 function App() {
@@ -10,6 +11,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<SketchGenerator />} />
+          <Route path="/preview" element={<PreviewDemo />} />
         </Routes>
       </BrowserRouter>
       <Toaster />
